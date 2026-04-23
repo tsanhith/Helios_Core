@@ -1,5 +1,12 @@
-from kivy.lang import Builder
-from kivymd.app import MDApp
+try:
+    from kivy.lang import Builder
+    from kivymd.app import MDApp
+except ModuleNotFoundError as exc:
+    missing_pkg = exc.name or "a required package"
+    raise SystemExit(
+        f"Missing dependency: {missing_pkg}. Install dependencies with: "
+        "python -m pip install -r requirements.txt"
+    ) from exc
 
 KV = """
 MDScreen:
@@ -19,7 +26,7 @@ MDScreen:
             pos_hint: {"center_x": 0.5}
             theme_icon_color: "Custom"
             icon_color: 1, 1, 1, 1
-            md_bg_color: app.theme_cls.primaryColor
+            md_bg_color: app.theme_cls.primary_color
             on_release: app.on_mic_press()
 
         MDLabel:

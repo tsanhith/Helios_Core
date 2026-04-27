@@ -1,3 +1,7 @@
 kivy
 kivymd
 requests
+plyer
+openai
+python-dotenv
+nvidia-riva-client

@@ -1,0 +1,13 @@
+# Backend
+fastapi
+uvicorn
+pydantic
+openai
+
+# Mobile
+kivy
+kivymd
+requests
+
+# Shared
+python-dotenv

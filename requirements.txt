@@ -1,7 +1,13 @@
-kivy
-kivymd
-requests
-plyer
-openai
-python-dotenv
-nvidia-riva-client
+kivy>=2.3.0
+kivymd>=2.0.0
+requests>=2.31.0
+plyer>=2.1.0
+openai>=1.30.0
+python-dotenv>=1.0.0
+nvidia-riva-client>=2.14.0
+
+# Phase 2 dependencies
+pyttsx3>=2.90          # TTS (Windows/Linux TTS fallback)
+gTTS>=2.5.0           # Google TTS (optional, requires internet)
+fuzzywuzzy>=0.18.0    # Contact name matching
+python-Levenshtein    # Speeds up fuzzy matching

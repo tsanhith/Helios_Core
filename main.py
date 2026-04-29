@@ -1,5 +1,6 @@
 import os
 import threading
+import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -10,7 +11,9 @@ try:
     from kivy.clock import Clock
     from kivy.lang import Builder
     from kivymd.app import MDApp
-    from plyer import recorder
+    from kivymd.uix.button import MDRaisedButton
+    from kivymd.uix.dialog import MDDialog
+    from plyer import recorder, tts
 except ModuleNotFoundError as exc:
     missing_pkg = exc.name or "a required package"
     raise SystemExit(
@@ -50,12 +53,27 @@ MDScreen:
 
 
 class HeliosApp(MDApp):
-    COMMAND_URL = "http://127.0.0.1:8000/process_command"
+    COMMAND_URL = "http://127.0.0.1:8000/process"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.is_recording = False
         self.audio_file = None
+        self.session_id = self._init_session()
+
+    def _init_session(self) -> str:
+        """Initialize or load session ID."""
+        import json
+        session_file = Path(__file__).parent / ".helios_session"
+        if session_file.exists():
+            try:
+                data = json.loads(session_file.read_text())
+                return data.get("session_id", str(uuid.uuid4())[:8])
+            except Exception:
+                pass
+        session_id = str(uuid.uuid4())[:8]
+        session_file.write_text(json.dumps({"session_id": session_id}))
+        return session_id
 
     def build(self):
         self.theme_cls.theme_style = "Light"
@@ -163,21 +181,154 @@ class HeliosApp(MDApp):
         try:
             response = requests.post(
                 self.COMMAND_URL,
-                json={"command": command},
-                timeout=10,
+                json={"text": command, "session_id": self.session_id},
+                timeout=30,
             )
             response.raise_for_status()
             data = response.json()
             print(f"Server response: {data}")
-            result_text = data.get("result", str(data)) if isinstance(data, dict) else str(data)
+            result_text = data.get("message", str(data))
+            actions = data.get("actions", [])
+            confirmation_required = data.get("confirmation_required", False)
+
+            if actions:
+                action_types = [a.get("type", "unknown") for a in actions]
+                result_text = f"{result_text}\nActions: {', '.join(action_types)}"
+
+            # Speak the response
+            self._speak(result_text)
+
+            # Check if confirmation is required for any action
+            if confirmation_required:
+                sensitive_actions = [a for a in actions if a.get("confirmation_required", False)]
+                if sensitive_actions:
+                    Clock.schedule_once(
+                        lambda _dt: self._show_confirmation_dialog(sensitive_actions, result_text)
+                    )
+                    return
+
         except requests.RequestException as exc:
             result_text = f"Request failed: {exc}"
             print(result_text)
+            self._speak("Sorry, there was a network error.")
         except ValueError as exc:
             result_text = f"Invalid JSON response: {exc}"
             print(result_text)
+            self._speak("Sorry, I received an invalid response.")
 
         Clock.schedule_once(lambda _dt: self._update_status_label(result_text))
+
+    def _speak(self, text: str):
+        """Use TTS to speak the response."""
+        try:
+            # Extract just the main message before newlines
+            speak_text = text.split('\n')[0] if '\n' in text else text
+            tts.speak(speak_text)
+        except Exception as e:
+            print(f"TTS error: {e}")
+
+    def _show_confirmation_dialog(self, actions: list, message: str):
+        """Show confirmation dialog for sensitive actions."""
+        action_details = []
+        for action in actions:
+            action_type = action.get("type", "unknown")
+            params = action.get("params", {})
+            if action_type == "call":
+                action_details.append(f"Call {params.get('contact', 'unknown')}")
+            elif action_type == "sms":
+                action_details.append(f"Message {params.get('contact', 'unknown')}")
+            elif action_type == "email":
+                action_details.append(f"Email {params.get('recipient', 'unknown')}")
+            else:
+                action_details.append(f"{action_type}: {params}")
+
+        dialog_text = f"{message}\n\nActions:\n" + "\n".join(f"  - {d}" for d in action_details)
+
+        self.dialog = MDDialog(
+            title="Confirm Action",
+            text=dialog_text,
+            buttons=[
+                MDRaisedButton(
+                    text="Cancel",
+                    on_release=lambda _: self._dismiss_dialog(),
+                ),
+                MDRaisedButton(
+                    text="Confirm",
+                    on_release=lambda _: self._confirm_action(actions),
+                ),
+            ],
+        )
+        self.dialog.open()
+
+    def _dismiss_dialog(self):
+        """Dismiss confirmation dialog."""
+        if hasattr(self, 'dialog'):
+            self.dialog.dismiss()
+        self._update_status_label("Action cancelled")
+
+    def _confirm_action(self, actions: list):
+        """Handle confirmed actions."""
+        if hasattr(self, 'dialog'):
+            self.dialog.dismiss()
+
+        # Execute confirmed actions
+        action_names = [a.get("type", "unknown") for a in actions]
+        self._update_status_label(f"Executing: {', '.join(action_names)}")
+
+        # Here you would actually execute the actions on the device
+        # For now, just speak and update status
+        self._speak("Action confirmed and executing")
+
+        # Execute each action
+        for action in actions:
+            self._execute_action(action)
+
+    def _execute_action(self, action: dict):
+        """Execute a single action."""
+        action_type = action.get("type")
+        params = action.get("params", {})
+
+        try:
+            if action_type == "call":
+                phone = params.get("contact", "")
+                print(f"[EXECUTE] Calling {phone}")
+                # Import android_intent or similar for actual execution
+
+            elif action_type == "sms":
+                phone = params.get("contact", "")
+                message = params.get("message", "")
+                print(f"[EXECUTE] SMS to {phone}: {message}")
+
+            elif action_type == "open_app":
+                app_name = params.get("app", "")
+                print(f"[EXECUTE] Opening app: {app_name}")
+
+            elif action_type == "speak":
+                text = params.get("text", "")
+                self._speak(text)
+
+            elif action_type == "email":
+                recipient = params.get("recipient", "")
+                subject = params.get("subject", "")
+                body = params.get("body", "")
+                print(f"[EXECUTE] Email to {recipient}: {subject}")
+
+            elif action_type == "reminder":
+                reminder_text = params.get("text", "")
+                when = params.get("datetime", "")
+                print(f"[EXECUTE] Reminder: {reminder_text} at {when}")
+
+            elif action_type == "web_search":
+                query = params.get("query", "")
+                print(f"[EXECUTE] Web search: {query}")
+
+            elif action_type == "calendar_add":
+                title = params.get("title", "")
+                event_time = params.get("datetime", "")
+                print(f"[EXECUTE] Calendar event: {title} at {event_time}")
+
+        except Exception as e:
+            print(f"[ERROR] Failed to execute {action_type}: {e}")
 
     def _update_status_label(self, text: str):
         self.root.ids.status_label.text = text

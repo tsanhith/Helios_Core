@@ -27,7 +27,7 @@ MDScreen:
         orientation: "vertical"
         spacing: "16dp"
         size_hint: None, None
-        size: dp(260), dp(320)
+        size: dp(300), dp(420)
         pos_hint: {"center_x": 0.5, "center_y": 0.5}
 
         Widget:
@@ -48,6 +48,13 @@ MDScreen:
             halign: "center"
             font_style: "H5"
 
+        MDLabel:
+            id: history_label
+            text: "Recent commands:\\n- (none)"
+            halign: "center"
+            theme_text_color: "Secondary"
+            font_style: "Body2"
+
         Widget:
 """
 
@@ -60,6 +67,7 @@ class HeliosApp(MDApp):
         self.is_recording = False
         self.audio_file = None
         self.session_id = self._init_session()
+        self.command_history = []
 
     def _init_session(self) -> str:
         """Initialize or load session ID."""
@@ -168,6 +176,7 @@ class HeliosApp(MDApp):
             print(f"Transcribed: {text}")
 
             if text:
+                Clock.schedule_once(lambda _dt: self._update_command_history(text))
                 Clock.schedule_once(lambda _dt: self._send_command(text))
             else:
                 Clock.schedule_once(lambda _dt: self._update_status_label("No speech detected"))
@@ -332,6 +341,22 @@ class HeliosApp(MDApp):
 
     def _update_status_label(self, text: str):
         self.root.ids.status_label.text = text
+
+    def _update_command_history(self, command: str):
+        normalized = " ".join(command.split())
+        if not normalized:
+            return
+
+        self.command_history.insert(0, normalized)
+        self.command_history = self.command_history[:3]
+        lines = [f"- {self._shorten_for_history(item)}" for item in self.command_history]
+        self.root.ids.history_label.text = "Recent commands:\n" + "\n".join(lines)
+
+    @staticmethod
+    def _shorten_for_history(text: str, max_len: int = 42) -> str:
+        if len(text) <= max_len:
+            return text
+        return text[: max_len - 3].rstrip() + "..."
 
 
 if __name__ == "__main__":

@@ -55,6 +55,13 @@ MDScreen:
             theme_text_color: "Secondary"
             font_style: "Body2"
 
+        MDRectangleFlatButton:
+            id: retry_button
+            text: "Retry Last Command"
+            pos_hint: {"center_x": 0.5}
+            disabled: True
+            on_release: app.on_retry_last_command()
+
         Widget:
 """
 
@@ -68,6 +75,7 @@ class HeliosApp(MDApp):
         self.audio_file = None
         self.session_id = self._init_session()
         self.command_history = []
+        self.last_command = ""
 
     def _init_session(self) -> str:
         """Initialize or load session ID."""
@@ -342,15 +350,28 @@ class HeliosApp(MDApp):
     def _update_status_label(self, text: str):
         self.root.ids.status_label.text = text
 
+    def on_retry_last_command(self):
+        if not self.last_command:
+            self._update_status_label("No recent command to retry")
+            return
+        self._update_status_label("Retrying last command...")
+        threading.Thread(
+            target=self._send_command,
+            args=(self.last_command,),
+            daemon=True,
+        ).start()
+
     def _update_command_history(self, command: str):
         normalized = " ".join(command.split())
         if not normalized:
             return
 
+        self.last_command = normalized
         self.command_history.insert(0, normalized)
         self.command_history = self.command_history[:3]
         lines = [f"- {self._shorten_for_history(item)}" for item in self.command_history]
         self.root.ids.history_label.text = "Recent commands:\n" + "\n".join(lines)
+        self.root.ids.retry_button.disabled = False
 
     @staticmethod
     def _shorten_for_history(text: str, max_len: int = 42) -> str:

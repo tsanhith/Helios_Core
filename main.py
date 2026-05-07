@@ -62,6 +62,13 @@ MDScreen:
             disabled: True
             on_release: app.on_retry_last_command()
 
+        MDRectangleFlatButton:
+            id: clear_history_button
+            text: "Clear History"
+            pos_hint: {"center_x": 0.5}
+            disabled: True
+            on_release: app.on_clear_history()
+
         Widget:
 """
 
@@ -361,6 +368,14 @@ class HeliosApp(MDApp):
             daemon=True,
         ).start()
 
+    def on_clear_history(self):
+        self.command_history = []
+        self.last_command = ""
+        self.root.ids.history_label.text = "Recent commands:\n- (none)"
+        self.root.ids.retry_button.disabled = True
+        self.root.ids.clear_history_button.disabled = True
+        self._update_status_label("Command history cleared")
+
     def _update_command_history(self, command: str):
         normalized = " ".join(command.split())
         if not normalized:
@@ -372,6 +387,7 @@ class HeliosApp(MDApp):
         lines = [f"- {self._shorten_for_history(item)}" for item in self.command_history]
         self.root.ids.history_label.text = "Recent commands:\n" + "\n".join(lines)
         self.root.ids.retry_button.disabled = False
+        self.root.ids.clear_history_button.disabled = False
 
     @staticmethod
     def _shorten_for_history(text: str, max_len: int = 42) -> str:
